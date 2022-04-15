@@ -40,12 +40,14 @@ static void print_usage(const char *prog)
 {
 	printf("Usage: %s [-factm]\n", prog);
 	puts("  -f --find_nlp  find network printer.\n"
-	     "  -a --nlp_addr  Network printer ip address.(default = 192.168.20.10)\n"
+	     "  -a --nlp_addr  Network printer ip address.(default = 192.168.0.0)\n"
 	     "  -c --channel   Message channel (left or right, default = left)\n"
 	     "  -t --msg_type  message type (mac or error, default = mac)\n"
 	     "  -m --msg       print message.\n"
-		 "                 type == mac, msg is 00:1e:06:??:??:??"
-	     "                 type == error, msg is usb,???,..."
+		 "                 type == mac, msg is 001e06??????\n"
+	     "                 type == error, msg is usb,???,...\n"
+		 "   e.g) nlp_test -a 192.168.20.10 -c left -t error -m usb,sata,hdd\n"
+		 "        nlp_test -f -c right -t mac -m 001e06234567\n"
 	);
 	exit(1);
 }
@@ -129,8 +131,10 @@ int main(int argc, char **argv)
 	if (OPT_NLP_FIND) {
 		if (nlp_find (NlpIPAddr))
 			info ("Network Label Printer Fond! IP = %s\n", NlpIPAddr);
-		else
+		else {
 			err ("Network Label Printer not found!\n");
+			return 0;
+		}
 	}
 
 	if (OPT_MSG_STR != NULL) {
