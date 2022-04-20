@@ -27,7 +27,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-#include <sys/ioctl.h> 
+#include <sys/ioctl.h>
 
 #include "typedefs.h"
 
@@ -40,6 +40,7 @@
 //------------------------------------------------------------------------------
 //	function prototype
 //------------------------------------------------------------------------------
+static int 	read_with_timeout	(int fd, char *buf, int buf_size, int timeout_ms);
 static void nlp_disconnect 	(int nlp_fp);
 static 	int nlp_connect 	(char *nlp_addr);
 static 	int get_my_ip 		(char *nlp_addr);
@@ -50,6 +51,32 @@ static 	int ip_range_check 	(char *nlp_addr);
 		int nlp_test 		(void);
 
 //------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// TCP/UDP 데이터 read (timeout가능)
+//------------------------------------------------------------------------------
+static int read_with_timeout(int fd, char *buf, int buf_size, int timeout_ms)
+{
+	int rx_len = 0;
+	struct	timeval  timeout;
+	fd_set	readFds;
+
+	// recive time out config
+	// Set 1ms timeout counter
+	timeout.tv_sec  = 0;
+	timeout.tv_usec = timeout_ms*1000;
+
+	FD_ZERO(&readFds);
+	FD_SET(fd, &readFds);
+	select(fd+1, &readFds, NULL, NULL, &timeout);
+
+	if(FD_ISSET(fd, &readFds))
+	{
+		rx_len = read(fd, buf, buf_size);
+	}
+
+	return rx_len;
+}
+
 //------------------------------------------------------------------------------
 //	연결을 해제한다.
 //------------------------------------------------------------------------------
@@ -175,6 +202,34 @@ int nlp_status (char *nlp_addr)
 }
 
 //------------------------------------------------------------------------------
+//	프로그램 버전을 확인한다.
+//
+//	성공 return 1, 실패 return 0
+//------------------------------------------------------------------------------
+int nlp_version (char *nlp_addr, char *rdver)
+{
+	byte_t sbuf[16], rbuf[16];
+	int nlp_fp = nlp_connect (nlp_addr), timeout = 1000;
+
+	if (nlp_fp > 0) {
+		memset (sbuf, 0, sizeof(sbuf));
+		memset (rbuf, 0, sizeof(rbuf));
+
+		strncpy(sbuf, "version", strlen("version"));
+		write (nlp_fp, sbuf, strlen(sbuf));
+		// wait read ack
+		if (read_with_timeout(nlp_fp, rbuf, sizeof(rbuf), timeout)) {
+			info ("read version is %s\n", rbuf);
+			strncpy(rdver, rbuf, strlen(rbuf));
+		}	else
+			info ("read time out %d ms or rbuf is NULL!\n", timeout);
+	}
+	nlp_disconnect(nlp_fp);
+
+	return nlp_fp ? 1 : 0;
+}
+
+//------------------------------------------------------------------------------
 //	nmap을 실행하여 나의 eth0에 할당되어진 현재 주소를 얻은 후 
 //	같은 네트워크상의 연결된 장치를 스켄하여 연결을 시도한다.
 //	성공시 입력 변수에 접속되어진 주소를 복사한다.
@@ -238,8 +293,9 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 {
 	int nlp_fp, len;
 	struct sockaddr_in s_addr;
-	char sbuf[64], nlp_addr[20];
+	char sbuf[64], nlp_addr[20], nlp_ver[20];
 
+	memset(nlp_ver , 0, sizeof(nlp_ver));
 	memset(nlp_addr, 0, sizeof(nlp_addr));
 	memcpy(nlp_addr, ip_addr, strlen(ip_addr));
 
@@ -252,6 +308,11 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 		info ("Network Label Printer found. IP address : %s\n", ip_addr);
 	}
 
+	if (!(nlp_version (nlp_addr, nlp_ver))) {
+		err("Network Label Printer get version error. ip = %s\n", nlp_addr);
+		return 0;
+	}
+
 	if (!(nlp_fp = nlp_connect (nlp_addr))) {
 		err("Network Label Printer connect error. ip = %s\n", nlp_addr);
 		return 0;
@@ -259,19 +320,22 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 
 	// 받아온 문자열 합치기
 	memset (sbuf, 0, sizeof(sbuf));
-	#if 0 
+
+	if (!strncmp(nlp_ver, "202204", strlen("202204")-1)) {
+		// charles modified version
+		info ("new version nlp-printer. ver = %s\n", nlp_ver);
+		sprintf(sbuf, "%s-%c,%s",
+						ch    ? "right" : "left",
+						mtype ?     'e' : 'm',
+						msg);
+	} else {
+		info ("old version nlp-printer.\n");
 		// original version
 		if (mtype)
 			sprintf(sbuf, "error,%s", msg);
 		else
 			sprintf(sbuf, "mac,%s", msg);
-	#else
-		// charles modified version
-		sprintf(sbuf, "%s-%c,%s",
-						ch    ? "right" : "left",
-						mtype ?     'e' : 'm',
-						msg);
-	#endif
+	}
 
 	// 받아온 문자열 전송
 	if ((len = write (nlp_fp, sbuf, strlen(sbuf))) != strlen(sbuf))

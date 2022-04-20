@@ -4,22 +4,31 @@
 //
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <limits.h>
+#include <netdb.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
-#include <unistd.h>
-#include <errno.h>
 #include <time.h>
-#include <ctype.h>
-#include <sys/types.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <linux/fb.h>
+#include <linux/sockios.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <linux/fb.h>
-#include <getopt.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
 
 #include "typedefs.h"
 #include "nlpctl.h"
@@ -30,6 +39,7 @@ const char *OPT_MSG_STR = NULL;
 static uchar_t OPT_CHANNEL = 0;
 static bool OPT_NLP_FIND = false;
 static bool OPT_MSG_ERR = false;
+static bool OPT_MAC_PRINT = false;
 
 static uchar_t NlpIPAddr[20];
 static uchar_t NlpMsg[64];
@@ -38,8 +48,9 @@ static uchar_t NlpMsg[64];
 //------------------------------------------------------------------------------
 static void print_usage(const char *prog)
 {
-	printf("Usage: %s [-factm]\n", prog);
-	puts("  -f --find_nlp  find network printer.\n"
+	printf("Usage: %s [-fpactm]\n", prog);
+	puts("  -f --find_nlp  find network printer ip.\n"
+	     "  -p --mac_print print device mac address.(find 00:1e:06:xx:xx:xx)\n"
 	     "  -a --nlp_addr  Network printer ip address.(default = 192.168.0.0)\n"
 	     "  -c --channel   Message channel (left or right, default = left)\n"
 	     "  -t --msg_type  message type (mac or error, default = mac)\n"
@@ -76,6 +87,7 @@ static void parse_opts (int argc, char *argv[])
 	while (1) {
 		static const struct option lopts[] = {
 			{ "find_nlp",  	0, 0, 'f' },
+			{ "mac_print",	0, 0, 'p' },
 			{ "nlp_addr",	1, 0, 'a' },
 			{ "channle",	1, 0, 'c' },
 			{ "msg_type",	1, 0, 't' },
@@ -84,7 +96,7 @@ static void parse_opts (int argc, char *argv[])
 		};
 		int c;
 
-		c = getopt_long(argc, argv, "fa:c:t:m:", lopts, NULL);
+		c = getopt_long(argc, argv, "fpa:c:t:m:", lopts, NULL);
 
 		if (c == -1)
 			break;
@@ -92,6 +104,9 @@ static void parse_opts (int argc, char *argv[])
 		switch (c) {
 		case 'f':
 			OPT_NLP_FIND = true;
+			break;
+		case 'p':
+			OPT_MAC_PRINT = true;
 			break;
 		case 'a':
 			OPT_NLP_ADDR = optarg;
@@ -121,6 +136,42 @@ static void parse_opts (int argc, char *argv[])
 }
 
 //------------------------------------------------------------------------------
+int get_mac_addr(byte_t *mac_str)
+{
+	int sock, if_count, i;
+	struct ifconf ifc;
+	struct ifreq ifr[10];
+	unsigned char mac[6];
+
+	memset(&ifc, 0, sizeof(struct ifconf));
+
+	sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+	// 검색 최대 개수는 10개
+	ifc.ifc_len = 10 * sizeof(struct ifreq);
+	ifc.ifc_buf = (char *)ifr;
+
+	// 네트웨크 카드 장치의 정보 얻어옴.
+	ioctl(sock, SIOCGIFCONF, (char *)&ifc);
+
+	// 읽어온 장치의 개수 파악
+	if_count = ifc.ifc_len / (sizeof(struct ifreq));
+	for (i = 0; i < if_count; i++) {
+		if (ioctl(sock, SIOCGIFHWADDR, &ifr[i]) == 0) {
+			memcpy(mac, ifr[i].ifr_hwaddr.sa_data, 6);
+			printf("find device (%s), mac: %02x:%02x:%02x:%02x:%02x:%02x\n",
+				ifr[i].ifr_name, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+			memset (mac_str, 0, 20);
+			sprintf(mac_str, "%02x%02x%02x%02x%02x%02x",
+						mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+			if (!strncmp ("001e06", mac_str, strlen("001e06")))
+				return 1;
+		}
+	}
+	return 0;
+}
+
+//------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
     parse_opts(argc, argv);
@@ -137,6 +188,17 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (OPT_MAC_PRINT) {
+		byte_t mac_str[20];
+		if (get_mac_addr(mac_str)) {
+			info ("Send to Net Printer(%s) %s!! (string : %s)\n",
+					NlpIPAddr,
+					nlp_write (NlpIPAddr, 0, mac_str, 0) ? "ok" : "false",
+					mac_str);
+		}
+		return 0;
+	}
+
 	if (OPT_MSG_STR != NULL) {
 		bool success = false;
 
@@ -148,7 +210,8 @@ int main(int argc, char **argv)
 				success ? "ok" : "false",
 				OPT_MSG_STR);
 	} else {
-		info ("-m {string} option is missing.\n");
+		if (!OPT_MAC_PRINT && !OPT_NLP_FIND)
+			info ("-m {string} option is missing.\n");
 	}
 //	nlp_test();
 	return 0;
