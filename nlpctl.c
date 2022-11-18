@@ -276,7 +276,13 @@ int nlp_find (char *nlp_addr)
 //	Network label printer에 MAC 또는 에러메세지를 출력한다.
 //  입력된 주소를 가지고 connect 상태를 확인한다.
 //	실패시 현재 자신의 주소를 확인 후 자신의 주소를 기준으로 nmap을 실행한다.
-//	nmap -sP 192.168.xxx.xxx
+//
+//  TCP/IP port 8888로 응답이 있고 mac addr이 00:1e:06:xx:xx:xx인 경우 해당함.
+//  기존의 Label Printer(GC420d)는 USB로 바로 연결되어야 하므로 Server역활인 ODROID-C4
+//  에서 데이터를 받아 프린터에 전송하는 방식으로 동작시킴.
+//
+//	nmap 192.168.xxx.xxx -p T:8888 --open
+//
 //	scan되어진 ip중 연결되는 ip가 있다면 프린터라고 간주한다.
 //	프린터에 메세지를 출력하고 출력이 정상인지 확인한다.
 //	정상적으로 연결되어진 ip를 입력되어진 주소영역에 저장한다.
