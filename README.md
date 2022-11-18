@@ -9,20 +9,12 @@ Label Printer with ODROID-C4 Printer server Test (GC420d/ZD230d)
 2022년 4월 20일
 version 명령어 추가 :
   version명령어를 보내서 응답이 있는 경우 새로운 문자열방식으로 전송함.
-  응답이 없는 경우 기존 프로그램이므로 기존 
-
-sudo apt install cups cups-bsd python3-pip
-sudo usermod -aG lpadmin odroid
-
-python3 -m pip install zebra cups psutil
-
-#check printer
-lpinfo -v
-
-lpstat -v
-lpadmin -p zebra -E -v usb://Zebra%20Technologies/ZTC%20GC420d%20\(EPL\)
-lpstat -v
-
+  응답이 없는 경우 기존 프로그램이므로 기존 방식으로 전송
+  메세지 형식
+  mac print
+      mac,001e06123456
+  error print
+      err,aaa,bbb,ccc
 
 ### Make ODROID-C4 Printer server
 사용이미지 : project/n2l/buntu-22.04-4.9-minimal-odroid-c4-hc4-20220705.img
@@ -31,12 +23,18 @@ lpstat -v
 3. python3 -m pip install zebra cups psutil
 4. lpinfo -v
 5. lpstat -v
-6. lpadmin -p zebra -E -v usb://Zebra%20Technologies/ZTC%20GC420d%20\(EPL\)
-7. lpstat -v
-8. git clone https://github.com/charles-park/nlp_test
-9. cd nlp_test/iperf_label_printer/install
-10. service install : n2l-server/service/install.sh
-11. overlay enable
+6. GC420d Printer 설정의 경우
+```
+  lpadmin -p zebra -E -v usb://Zebra%20Technologies/ZTC%20GC420d%20\(EPL\)
+```
+7. ZD230D Printer 설정의 경우
+```
+  lpadmin -p zebra -E -v usb://Zebra%20Technologies/ZTC%20ZD230-203dpi%20ZPL?serial=D4J222603053
+```
+8. lpstat -v
+9. git clone https://github.com/charles-park/nlp_test
+10. servuce install nlp_test/iperf_label_printer/install/iperf_label_printer.service
+12. overlay enable
 ```
 root@odroid:~# update-initramfs -c -k $(uname -r)
 update-initramfs: Generating /boot/initrd.img-4.9.277-75
