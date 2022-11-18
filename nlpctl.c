@@ -250,7 +250,7 @@ int nlp_find (char *nlp_addr)
 	ip_tok = strtok(NULL,     ".");	ip = atoi(ip_tok);
 
 	memset(cmd, 0, sizeof(cmd));
-	sprintf(cmd, "nmap -sP %s%d.*", NET_IP_BASE, ip);
+	sprintf(cmd, "nmap %s%d.* -p T:8888 --open", NET_IP_BASE, ip);
 
 	if (NULL == (fp = popen(cmd, "r")))
 	{
