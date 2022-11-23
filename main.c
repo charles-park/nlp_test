@@ -193,7 +193,7 @@ int main(int argc, char **argv)
 		if (get_mac_addr(mac_str)) {
 			info ("Send to Net Printer(%s) %s!! (string : %s)\n",
 					NlpIPAddr,
-					nlp_write (NlpIPAddr, 0, mac_str, 0) ? "ok" : "false",
+					nlp_write (NlpIPAddr, 0, mac_str, OPT_CHANNEL) ? "ok" : "false",
 					mac_str);
 		}
 		return 0;

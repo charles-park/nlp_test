@@ -40,6 +40,7 @@
 //------------------------------------------------------------------------------
 //	function prototype
 //------------------------------------------------------------------------------
+static int is_net_alive		(char *nlp_addr);
 static int 	read_with_timeout	(int fd, char *buf, int buf_size, int timeout_ms);
 static void nlp_disconnect 	(int nlp_fp);
 static 	int nlp_connect 	(char *nlp_addr);
@@ -51,6 +52,29 @@ static 	int ip_range_check 	(char *nlp_addr);
 		int nlp_test 		(void);
 
 //------------------------------------------------------------------------------
+static int is_net_alive (char *nlp_addr)
+{
+	char buf[2048];
+	FILE *fp;
+
+	memset (buf, 0x00, sizeof(buf));
+	sprintf (buf, "ping -c 1 -w 1 2<&1 %s", nlp_addr);
+	fprintf(stdout, "%s [%s] = true\n", __func__, buf);
+	if ((fp = popen(buf, "r")) != NULL) {
+		memset (buf, 0x00, sizeof(buf));
+		while (fgets(buf, 2048, fp)) {
+			if (NULL != strstr(buf, "1 received")) {
+				pclose(fp);
+				fprintf(stdout, "%s = true\n", __func__);
+				return 1;
+			}
+		}
+		pclose(fp);
+	}
+	fprintf(stdout, "%s = false\n", __func__);
+	return 0;
+}
+
 //------------------------------------------------------------------------------
 // TCP/UDP 데이터 read (timeout가능)
 //------------------------------------------------------------------------------
@@ -164,6 +188,10 @@ static int nlp_connect (char *nlp_addr)
 		err ("Out of range IP Address! (%s)\n", nlp_addr);
 		return 0;
 	}
+
+	// ping test
+	if (!is_net_alive(nlp_addr))
+		return 0;
 
 	if((nlp_fp = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) <0){
 		err("socket create error : \n");
@@ -306,12 +334,8 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 	memcpy(nlp_addr, ip_addr, strlen(ip_addr));
 
 	if (!nlp_status(nlp_addr)) {
-		if(!nlp_find (nlp_addr)) {
-			err("Netwrok Label Print not found!! (%s)\n", nlp_addr);
-			return 0;
-		}
-		strncpy(ip_addr, nlp_addr, strlen(nlp_addr));
-		info ("Network Label Printer found. IP address : %s\n", ip_addr);
+		err("Netwrok Label Print not found!! (%s)\n", nlp_addr);
+		return 0;
 	}
 
 	if (!(nlp_version (nlp_addr, nlp_ver))) {
