@@ -246,7 +246,7 @@ static void convert_to_zpl (char *sbuf, char mtype, char *msg, char ch)
 		len     = sprintf (&sbuf[0]  , "%s", "^XA");
 		len    += sprintf (&sbuf[len], "%s", "^FO304,20");
 
-		err_len = sprintf (&err[0], "%c ", ch ? '<' : '>');
+		err_len = sprintf (&err[0], "%c ", ch ? '>' : '<');
 
 		msg_ptr = strtok (msg, ",");
 		while (msg_ptr != NULL) {
@@ -451,7 +451,7 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 			info ("old version nlp-printer.\n");
 			// original version
 			if (mtype)
-				sprintf(sbuf, "error,%s", msg);
+				sprintf(sbuf, "error,%c,%s", ch ? '>' : '<', msg);
 			else
 				sprintf(sbuf, "mac,%s", msg);
 		}
