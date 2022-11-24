@@ -50,6 +50,8 @@ static void print_usage(const char *prog)
 {
 	printf("Usage: %s [-fpactm]\n", prog);
 	puts("  -f --find_nlp  find network printer ip.\n"
+	     "  -z --zpl       zpl label printer direct connect (T:9100)\n"
+		 "                 default npl_server connect (T:8888)\n"
 	     "  -p --mac_print print device mac address.(find 00:1e:06:xx:xx:xx)\n"
 	     "  -a --nlp_addr  Network printer ip address.(default = 192.168.0.0)\n"
 	     "  -c --channel   Message channel (left or right, default = left)\n"
@@ -96,7 +98,7 @@ static void parse_opts (int argc, char *argv[])
 		};
 		int c;
 
-		c = getopt_long(argc, argv, "fpa:c:t:m:", lopts, NULL);
+		c = getopt_long(argc, argv, "fpa:c:t:m:z", lopts, NULL);
 
 		if (c == -1)
 			break;
@@ -127,6 +129,10 @@ static void parse_opts (int argc, char *argv[])
 			break;
 		case 'm':
 			OPT_MSG_STR = optarg;
+			break;
+		case 'z':
+			/* Connect directly to ZPL Porocol printers over a network.(ZD230D) */
+			nlp_set_port (9100);
 			break;
 		default:
 			print_usage(argv[0]);

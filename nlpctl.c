@@ -5,6 +5,7 @@
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 #include <stdio.h>
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -37,15 +38,23 @@
 #define NET_IP_BASE			"192.168."
 #define TIMEOUT_SEC			10
 
+#define	PRINT_MAX_CHAR	18
+#define	PRINT_MAX_LINE	3
+
+/* Default port 8888 (ODROID NLP Server), zpl direct port 9100 */
+static int NlpTCPPort = NET_DEFAULT_PORT;
+
 //------------------------------------------------------------------------------
 //	function prototype
 //------------------------------------------------------------------------------
 static int is_net_alive		(char *nlp_addr);
 static int 	read_with_timeout	(int fd, char *buf, int buf_size, int timeout_ms);
-static void nlp_disconnect 	(int nlp_fp);
+static	void nlp_disconnect	(int nlp_fp);
 static 	int nlp_connect 	(char *nlp_addr);
 static 	int get_my_ip 		(char *nlp_addr);
 static 	int ip_range_check 	(char *nlp_addr);
+static	void convert_to_zpl (char *sbuf, char mtype, char *msg, char ch);
+		void nlp_set_port	(int port);
 		int nlp_status 		(char *nlp_addr);
 		int nlp_find 		(char *nlp_addr);
 		int nlp_write		(char *nlp_addr, char mtype, char *msg, char ch);
@@ -204,7 +213,7 @@ static int nlp_connect (char *nlp_addr)
 	//소켓에 접속할 주소 지정
 	s_addr.sin_family 		= AF_INET;
 	s_addr.sin_addr.s_addr 	= inet_addr(nlp_addr);
-	s_addr.sin_port 		= htons(NET_DEFAULT_PORT);
+	s_addr.sin_port 		= htons(NlpTCPPort);
 
 	// 지정한 주소로 접속
 	if(connect (nlp_fp, (struct sockaddr *)&s_addr, len) < 0) {
@@ -213,6 +222,85 @@ static int nlp_connect (char *nlp_addr)
 		return 0;
 	}
 	return nlp_fp;
+}
+
+//------------------------------------------------------------------------------
+//
+//  Direct 연결하여 프린트 할 수 있는 Format으로 데이터 변경 (ZD230D)
+//
+//	mtype : 0 (mac addr), 1 (error)
+//	msg
+//		mtype : 0 -> 00:1e:06:xx:xx:xx
+//		mtype : 1 -> err1, err2, ...
+//	ch : 0 (left), 1 (right)
+//
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+static void convert_to_zpl (char *sbuf, char mtype, char *msg, char ch)
+{
+	int len;
+	if (mtype) {
+		char err[20], *msg_ptr, err_len, line = 0;
+
+		memset (err, 0x00, sizeof(err));
+		len     = sprintf (&sbuf[0]  , "%s", "^XA");
+		len    += sprintf (&sbuf[len], "%s", "^FO304,20");
+
+		err_len = sprintf (&err[0], "%c ", ch ? '<' : '>');
+
+		msg_ptr = strtok (msg, ",");
+		while (msg_ptr != NULL) {
+			if ((strlen(msg_ptr) + err_len) > PRINT_MAX_CHAR) {
+				len += sprintf (&sbuf[len], "^FD%s^FS", err);
+				memset (err, 0x00, sizeof(err));
+				err_len = 0;
+				if (line < PRINT_MAX_LINE-1) {
+					line++;
+				} else {
+					len += sprintf (&sbuf[len], "%s", "^XZ");
+					len += sprintf (&sbuf[len]  , "%s", "^XA");
+					line = 0;
+				}
+				len += sprintf (&sbuf[len], "^FO304,%d", line * 20 + 20);
+			}
+			err_len += sprintf (&err[err_len], "%s ", msg_ptr);
+			msg_ptr  = strtok (NULL, ",");
+		}
+		if (err_len) {
+			len += sprintf (&sbuf[len], "^FD%s^FS", err);
+			len += sprintf (&sbuf[len], "%s", "^XZ");
+		}
+	} else {
+		char mac[18], *ptr;
+
+		memset (mac, 0x00, sizeof(mac));
+		len  = sprintf (&sbuf[0]  , "%s", "^XA");
+		len += sprintf (&sbuf[len], "%s", "^CFC");
+		len += sprintf (&sbuf[len], "%s", "^FO310,25");
+		len += sprintf (&sbuf[len], "^FD%s^FS",
+				ch == 0 ? "< forum.odroid.com" : "forum.odroid.com >");
+		len += sprintf (&sbuf[len], "%s", "^FO316,55");
+
+		sprintf(mac, "%s", "??:??:??:??:??:??");
+		if ((ptr = strstr (msg, "001e06")) != NULL) {
+			sprintf(mac, "%c%c:%c%c:%c%c:%c%c:%c%c:%c%c",
+				toupper(ptr[0]), toupper(ptr[1]), toupper(ptr[2]), toupper(ptr[3]),
+				toupper(ptr[4]), toupper(ptr[5]), toupper(ptr[6]), toupper(ptr[7]),
+				toupper(ptr[8]), toupper(ptr[9]), toupper(ptr[10]), toupper(ptr[11]));
+		}
+		len += sprintf (&sbuf[len], "^FD%s^FS", mac);
+		len += sprintf (&sbuf[len], "%s", "^XZ");
+	}
+	info ("msg : %s, %d\n", sbuf, len);
+}
+
+//------------------------------------------------------------------------------
+//	ODROID-C4를 사용하여 프린트되어지는 포트는 TCP : 8888
+//  Direct Net연결하여 프린트 되어지는 포트는 TCP : 9100 (Model ZD230D)
+//------------------------------------------------------------------------------
+void nlp_set_port (int port)
+{
+	NlpTCPPort = port;
 }
 
 //------------------------------------------------------------------------------
@@ -239,7 +327,7 @@ int nlp_version (char *nlp_addr, char *rdver)
 	byte_t sbuf[16], rbuf[16];
 	int nlp_fp = nlp_connect (nlp_addr), timeout = 1000;
 
-	if (nlp_fp > 0) {
+	if ((nlp_fp > 0) && (NlpTCPPort == NET_DEFAULT_PORT)) {
 		memset (sbuf, 0, sizeof(sbuf));
 		memset (rbuf, 0, sizeof(rbuf));
 
@@ -278,7 +366,7 @@ int nlp_find (char *nlp_addr)
 	ip_tok = strtok(NULL,     ".");	ip = atoi(ip_tok);
 
 	memset(cmd, 0, sizeof(cmd));
-	sprintf(cmd, "nmap %s%d.* -p T:8888 --open", NET_IP_BASE, ip);
+	sprintf(cmd, "nmap %s%d.* -p T:%4d --open", NET_IP_BASE, ip, NlpTCPPort);
 
 	if (NULL == (fp = popen(cmd, "r")))
 	{
@@ -327,7 +415,7 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 {
 	int nlp_fp, len;
 	struct sockaddr_in s_addr;
-	char sbuf[64], nlp_addr[20], nlp_ver[20];
+	char sbuf[256], nlp_addr[20], nlp_ver[20];
 
 	memset(nlp_ver , 0, sizeof(nlp_ver));
 	memset(nlp_addr, 0, sizeof(nlp_addr));
@@ -351,21 +439,25 @@ int nlp_write (char *ip_addr, char mtype, char *msg, char ch)
 	// 받아온 문자열 합치기
 	memset (sbuf, 0, sizeof(sbuf));
 
-	if (!strncmp(nlp_ver, "202204", strlen("202204")-1)) {
-		// charles modified version
-		info ("new version nlp-printer. ver = %s\n", nlp_ver);
-		sprintf(sbuf, "%s-%c,%s",
-						ch    ? "right" : "left",
-						mtype ?     'e' : 'm',
-						msg);
-	} else {
-		info ("old version nlp-printer.\n");
-		// original version
-		if (mtype)
-			sprintf(sbuf, "error,%s", msg);
-		else
-			sprintf(sbuf, "mac,%s", msg);
+	if (NlpTCPPort == NET_DEFAULT_PORT) {
+		if (!strncmp(nlp_ver, "202204", strlen("202204")-1)) {
+			// charles modified version
+			info ("new version nlp-printer. ver = %s\n", nlp_ver);
+			sprintf(sbuf, "%s-%c,%s",
+							ch    ? "right" : "left",
+							mtype ?     'e' : 'm',
+							msg);
+		} else {
+			info ("old version nlp-printer.\n");
+			// original version
+			if (mtype)
+				sprintf(sbuf, "error,%s", msg);
+			else
+				sprintf(sbuf, "mac,%s", msg);
+		}
 	}
+	else
+		convert_to_zpl (sbuf, mtype, msg, ch);
 
 	// 받아온 문자열 전송
 	if ((len = write (nlp_fp, sbuf, strlen(sbuf))) != strlen(sbuf))
