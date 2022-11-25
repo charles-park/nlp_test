@@ -16,7 +16,7 @@ version 명령어 추가 :
   error print
       err,aaa,bbb,ccc
 
-### Make ODROID-C4 Printer server
+### Make ODROID-C4 Printer server (https://github.com/charles-park/nlp_server)
 사용이미지 : project/n2l/buntu-22.04-4.9-minimal-odroid-c4-hc4-20220705.img
 1. apt update && apt upgrade
 2. apt install build-essential git overlayroot vim ssh cups cups-bsd python3-pip python3
